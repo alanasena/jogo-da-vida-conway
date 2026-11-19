@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jogo da Vida de Conway — Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --line:#262d36; --text:#e6edf3; --muted:#8b949e;
+    --cell:#7ee787; --cell2:#56d364; --accent:#f78166; --grid:#1b2129;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:"Space Grotesk",system-ui,sans-serif;min-height:100vh}
+  header{padding:20px 24px 8px;display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 20px}
+  h1{margin:0;font-size:26px;letter-spacing:-.5px}
+  h1 span{color:var(--cell)}
+  .sub{color:var(--muted);font-size:14px}
+  .tabs{display:flex;gap:6px;padding:8px 24px 0}
+  .tab{background:none;border:1px solid var(--line);color:var(--muted);padding:8px 14px;border-radius:8px 8px 0 0;cursor:pointer;font:inherit;font-size:14px;border-bottom:none}
+  .tab.on{background:var(--panel);color:var(--text)}
+  main{padding:0 24px 24px}
+  .view{display:none;background:var(--panel);border:1px solid var(--line);border-radius:0 12px 12px 12px;padding:16px}
+  .view.on{display:grid;grid-template-columns:1fr 290px;gap:16px}
+  @media (max-width:860px){.view.on{grid-template-columns:1fr}}
+  canvas{width:100%;display:block;background:var(--bg);border-radius:8px;border:1px solid var(--line);cursor:crosshair;touch-action:none}
+  .side{display:flex;flex-direction:column;gap:14px}
+  .box{border:1px solid var(--line);border-radius:10px;padding:12px}
+  .box h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:500}
+  .row{display:flex;flex-wrap:wrap;gap:6px}
+  button.b{background:#21262d;border:1px solid var(--line);color:var(--text);padding:7px 11px;border-radius:7px;cursor:pointer;font:inherit;font-size:13px}
+  button.b:hover{border-color:var(--muted)}
+  button.b.main{background:var(--cell);color:#0b2a12;border-color:var(--cell);font-weight:700}
+  button.b.pat{font-size:12px}
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .stat{background:var(--bg);border-radius:8px;padding:8px 10px}
+  .stat b{display:block;font-family:"JetBrains Mono",monospace;font-size:22px;color:var(--cell)}
+  .stat small{color:var(--muted);font-size:11px}
+  label{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px}
+  input[type=range]{flex:1;accent-color:var(--cell)}
+  .rule{font-size:13px;line-height:1.5;color:var(--muted)}
+  .rule b{color:var(--text)}
+  .desc{font-size:13px;line-height:1.5;color:var(--text);min-height:40px}
+  .mono{font-family:"JetBrains Mono",monospace}
+  .r110 td{width:22px;height:22px;text-align:center;font-family:"JetBrains Mono",monospace;font-size:11px}
+  .r110 .on{background:var(--cell);color:#0b2a12}
+  .r110 .off{background:var(--bg);color:var(--muted)}
+  table.r110{border-collapse:separate;border-spacing:2px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Jogo da Vida <span>de Conway</span></h1>
+  <div class="sub">Autômatos celulares · Teoria da Computação · UFC Russas</div>
+</header>
+
+<div class="tabs">
+  <button class="tab on" data-v="life">Jogo da Vida (2D)</button>
+  <button class="tab" data-v="wolf">Autômato 1D (Regra 110 / 30)</button>
+</div>
+
+<main>
+<!-- ========== JOGO DA VIDA ========== -->
+<section class="view on" id="life">
+  <div><canvas id="cv"></canvas></div>
+  <div class="side">
+    <div class="box">
+      <div class="row">
+        <button class="b main" id="play">▶ Play</button>
+        <button class="b" id="step">Passo</button>
+        <button class="b" id="rand">Aleatório</button>
+        <button class="b" id="clear">Limpar</button>
+      </div>
+      <div style="margin-top:10px"><label>Velocidade <input type="range" id="speed" min="1" max="60" value="15"></label></div>
+      <div style="margin-top:6px"><label><input type="checkbox" id="wrap" checked> Bordas conectadas (toro)</label></div>
+    </div>
+    <div class="stats">
+      <div class="stat"><b id="gen">0</b><small>Geração</small></div>
+      <div class="stat"><b id="pop">0</b><small>Células vivas</small></div>
+    </div>
+    <div class="box">
+      <h3>Padrões</h3>
+      <div class="row" id="pats"></div>
+      <p class="desc" id="pdesc">Clique num padrão, ou desenhe na grade clicando e arrastando.</p>
+    </div>
+    <div class="box rule">
+      <h3>Regra B3/S23</h3>
+      Cada célula olha seus <b>8 vizinhos</b>:<br>
+      • Morta com <b>3</b> vizinhas → <b>nasce</b><br>
+      • Viva com <b>2 ou 3</b> → <b>sobrevive</b><br>
+      • Qualquer outro caso → <b>morre</b> (solidão ou superpopulação)
+    </div>
+  </div>
+</section>
+
+<!-- ========== WOLFRAM 1D ========== -->
+<section class="view" id="wolf">
+  <div><canvas id="cv2"></canvas></div>
+  <div class="side">
+    <div class="box">
+      <div class="row">
+        <button class="b main" id="w110">Regra 110</button>
+        <button class="b" id="w30">Regra 30</button>
+        <button class="b" id="w90">Regra 90</button>
+      </div>
+      <div style="margin-top:10px" class="row">
+        <button class="b" id="wSingle">Começar com 1 célula</button>
+        <button class="b" id="wRand">Linha aleatória</button>
+      </div>
+      <div style="margin-top:10px"><label>Regra <input type="number" id="wnum" min="0" max="255" value="110" style="width:70px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:4px 6px;font:inherit"></label></div>
+    </div>
+    <div class="box">
+      <h3>Tabela da regra <span class="mono" id="wlabel">110</span></h3>
+      <table class="r110" id="wtable"></table>
+      <p class="rule" style="margin:8px 0 0">Cada linha é uma geração (o tempo desce). A célula nova depende só dela e das 2 vizinhas — 8 combinações possíveis.</p>
+    </div>
+    <div class="box desc" id="wdesc"></div>
+  </div>
+</section>
+</main>
+
+<script>
+/* ---------- tabs ---------- */
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===t));
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id===t.dataset.v));
+  if(t.dataset.v==='wolf') drawWolf(); else resize();
+});
+
+/* ---------- Jogo da Vida ---------- */
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+let W=0,H=0,CS=10,grid,next,gen=0,running=false,timer=null;
+const $=id=>document.getElementById(id);
+
+function resize(){
+  const w=cv.clientWidth; if(!w) return;
+  const h=Math.max(380,Math.min(window.innerHeight-170,w*0.7));
+  const dpr=window.devicePixelRatio||1;
+  cv.style.height=h+'px'; cv.width=w*dpr; cv.height=h*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+  const nW=Math.floor(w/CS), nH=Math.floor(h/CS);
+  if(nW!==W||nH!==H){
+    const old=grid, oW=W, oH=H; W=nW; H=nH;
+    grid=new Uint8Array(W*H); next=new Uint8Array(W*H);
+    if(old) for(let y=0;y<Math.min(oH,H);y++)for(let x=0;x<Math.min(oW,W);x++)grid[y*W+x]=old[y*oW+x];
+  }
+  draw();
+}
+function draw(){
+  const w=W*CS,h=H*CS;
+  ctx.fillStyle='#0e1116'; ctx.fillRect(0,0,cv.clientWidth,cv.clientHeight);
+  ctx.strokeStyle='#1b2129'; ctx.lineWidth=1; ctx.beginPath();
+  for(let x=0;x<=W;x++){ctx.moveTo(x*CS+.5,0);ctx.lineTo(x*CS+.5,h)}
+  for(let y=0;y<=H;y++){ctx.moveTo(0,y*CS+.5);ctx.lineTo(w,y*CS+.5)}
+  ctx.stroke();
+  ctx.fillStyle='#7ee787'; let p=0;
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++) if(grid[y*W+x]){p++;ctx.fillRect(x*CS+1,y*CS+1,CS-1,CS-1)}
+  $('gen').textContent=gen; $('pop').textContent=p;
+}
+function stepLife(){
+  const wrap=$('wrap').checked;
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    let n=0;
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+      if(!dx&&!dy)continue;
+      let xx=x+dx,yy=y+dy;
+      if(wrap){xx=(xx+W)%W;yy=(yy+H)%H}else if(xx<0||yy<0||xx>=W||yy>=H)continue;
+      n+=grid[yy*W+xx];
+    }
+    const a=grid[y*W+x];
+    next[y*W+x]=(n===3||(a&&n===2))?1:0;
+  }
+  [grid,next]=[next,grid]; gen++; draw();
+}
+function loop(){ if(!running)return; stepLife(); timer=setTimeout(loop,1000/ +$('speed').value); }
+function setRun(r){ running=r; $('play').textContent=r?'❚❚ Pausar':'▶ Play'; clearTimeout(timer); if(r)loop(); }
+$('play').onclick=()=>setRun(!running);
+$('step').onclick=()=>{setRun(false);stepLife()};
+$('clear').onclick=()=>{setRun(false);grid.fill(0);gen=0;draw();$('pdesc').textContent='Grade limpa. Desenhe clicando e arrastando.'};
+$('rand').onclick=()=>{grid.forEach((_,i)=>grid[i]=Math.random()<.25?1:0);gen=0;draw();$('pdesc').textContent='Sopa aleatória: começa caótica e vai se organizando em padrões estáveis, osciladores e gliders.'};
+
+/* desenhar */
+let drawing=false,drawVal=1;
+function cellAt(e){const r=cv.getBoundingClientRect();return[Math.floor((e.clientX-r.left)/CS),Math.floor((e.clientY-r.top)/CS)]}
+cv.addEventListener('pointerdown',e=>{const[x,y]=cellAt(e);if(x<0||y<0||x>=W||y>=H)return;drawing=true;drawVal=grid[y*W+x]?0:1;grid[y*W+x]=drawVal;draw();cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{if(!drawing)return;const[x,y]=cellAt(e);if(x<0||y<0||x>=W||y>=H)return;grid[y*W+x]=drawVal;draw()});
+cv.addEventListener('pointerup',()=>drawing=false);
+
+/* padrões (formato RLE simplificado: linhas com . e O) */
+const P={
+  'Glider':{d:'O menor "nave": anda na diagonal, 1 célula a cada 4 gerações. É o "sinal" usado pra montar portas lógicas.',
+    s:['.O.','..O','OOO']},
+  'Blinker':{d:'Oscilador de período 2: alterna entre horizontal e vertical para sempre.',s:['OOO']},
+  'Pulsar':{d:'Oscilador de período 3, simétrico. Um dos mais famosos.',
+    s:['..OOO...OOO..','.............','O....O.O....O','O....O.O....O','O....O.O....O','..OOO...OOO..','.............','..OOO...OOO..','O....O.O....O','O....O.O....O','O....O.O....O','.............','..OOO...OOO..']},
+  'Nave (LWSS)':{d:'Lightweight spaceship: anda na horizontal, período 4.',s:['.O..O','O....','O...O','OOOO.']},
+  'Glider Gun':{d:'Canhão de Gosper (1970): dispara um glider a cada 30 gerações. Provou que uma população pode crescer sem limite — e gliders viram "bits" para computação.',
+    s:['........................O...........','......................O.O...........','............OO......OO............OO','...........O...O....OO............OO','OO........O.....O...OO..............','OO........O...O.OO....O.O...........','..........O.....O.......O...........','...........O...O....................','............OO......................']},
+  'R-pentomino':{d:'Só 5 células, mas leva 1103 gerações pra estabilizar. Mostra como é difícil prever o futuro de um padrão.',s:['.OO','OO.','.O.']},
+  'Acorn':{d:'7 células que geram caos por 5206 gerações antes de estabilizar.',s:['.O.....','...O...','OO..OOO']},
+  'Bloco':{d:'Vida parada (still life): nunca muda.',s:['OO','OO']}
+};
+const pc=$('pats');
+Object.keys(P).forEach(k=>{const b=document.createElement('button');b.className='b pat';b.textContent=k;b.onclick=()=>place(k);pc.appendChild(b)});
+function place(k){
+  setRun(false); grid.fill(0); gen=0;
+  const s=P[k].s, ph=s.length, pw=Math.max(...s.map(r=>r.length));
+  let ox=Math.floor((W-pw)/2), oy=Math.floor((H-ph)/2);
+  if(k==='Glider Gun'){ox=2;oy=2}
+  if(k==='Glider'||k==='Nave (LWSS)'){ox=4;oy=Math.floor(H/2)-2}
+  s.forEach((r,y)=>[...r].forEach((c,x)=>{if(c==='O'&&ox+x<W&&oy+y<H)grid[(oy+y)*W+ox+x]=1}));
+  $('pdesc').textContent=P[k].d; draw();
+}
+window.addEventListener('resize',()=>{resize();drawWolf()});
+resize(); place('Glider Gun');
+
+/* ---------- Autômato 1D (Wolfram) ---------- */
+const cv2=$('cv2'), c2=cv2.getContext('2d');
+let rule=110, startMode='single';
+const WDESC={
+  110:'<b>Regra 110</b> — provada <b>Turing-completa</b> por Matthew Cook (publicado em 2004). Uma regra com só 8 casos consegue simular qualquer computação. Repare nas estruturas que se movem e colidem.',
+  30:'<b>Regra 30</b> — gera um padrão caótico a partir de uma única célula. A coluna do meio parece aleatória e já foi usada como gerador de números pseudoaleatórios (no Mathematica).',
+  90:'<b>Regra 90</b> — cada célula vira o XOR das vizinhas. A partir de 1 célula forma o <b>triângulo de Sierpiński</b>, um fractal.'
+};
+function drawWolf(){
+  const w=cv2.clientWidth; if(!w)return;
+  const cs=4, cols=Math.floor(w/cs), h=Math.max(380,Math.min(window.innerHeight-170,w*0.7)), rows=Math.floor(h/cs);
+  const dpr=window.devicePixelRatio||1;
+  cv2.style.height=h+'px'; cv2.width=w*dpr; cv2.height=h*dpr; c2.setTransform(dpr,0,0,dpr,0,0);
+  c2.fillStyle='#0e1116'; c2.fillRect(0,0,w,h); c2.fillStyle='#7ee787';
+  let row=new Uint8Array(cols);
+  if(startMode==='single') row[rule===110?cols-2:Math.floor(cols/2)]=1;
+  else row.forEach((_,i)=>row[i]=Math.random()<.5?1:0);
+  for(let y=0;y<rows;y++){
+    for(let x=0;x<cols;x++) if(row[x]) c2.fillRect(x*cs,y*cs,cs,cs);
+    const nr=new Uint8Array(cols);
+    for(let x=0;x<cols;x++){
+      const l=row[(x-1+cols)%cols],c=row[x],r=row[(x+1)%cols];
+      nr[x]=(rule>>(l<<2|c<<1|r))&1;
+    }
+    row=nr;
+  }
+  // tabela
+  let top='<tr>',bot='<tr>';
+  for(let i=7;i>=0;i--){
+    top+=`<td class="mono" style="color:var(--muted);font-size:10px;width:auto;padding:0 3px">${i.toString(2).padStart(3,'0')}</td>`;
+    const v=(rule>>i)&1; bot+=`<td class="${v?'on':'off'}">${v}</td>`;
+  }
+  $('wtable').innerHTML=top+'</tr>'+bot+'</tr>';
+  $('wlabel').textContent=rule+' = '+rule.toString(2).padStart(8,'0');
+  $('wdesc').innerHTML=WDESC[rule]||`<b>Regra ${rule}</b> — experimente outras regras de 0 a 255 e compare com as classes de Wolfram: estável, periódica, caótica ou complexa.`;
+  $('wnum').value=rule;
+  ['w110','w30','w90'].forEach(id=>$(id).classList.toggle('main',+id.slice(1)===rule));
+}
+$('w110').onclick=()=>{rule=110;drawWolf()};
+$('w30').onclick=()=>{rule=30;drawWolf()};
+$('w90').onclick=()=>{rule=90;drawWolf()};
+$('wSingle').onclick=()=>{startMode='single';drawWolf()};
+$('wRand').onclick=()=>{startMode='rand';drawWolf()};
+$('wnum').onchange=e=>{rule=Math.max(0,Math.min(255,+e.target.value|0));drawWolf()};
+</script>
+</body>
+</html>
